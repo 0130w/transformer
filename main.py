@@ -3,6 +3,8 @@ import os
 from dotenv import load_dotenv
 from transformers import AutoTokenizer
 
+from transformer import Transformer
+
 if __name__ == "__main__":
     load_dotenv()
     HF_ACCESS_TOKEN = os.getenv("HF_ACCESS_TOKEN")
@@ -18,4 +20,3 @@ if __name__ == "__main__":
         padding=True,
         return_tensors="pt",
     )  # host on cpu
-    print(batch)

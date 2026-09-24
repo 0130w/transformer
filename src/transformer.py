@@ -113,9 +113,9 @@ class Encoder(nn.Module):
         self.ffn = FeedForwardLayer(d_model, head_num, 4 * d_model)
         self.conv2 = ResidualLayer(d_model)
 
-    def forward(self, x, mask=None):  # [batch_size, seq_len, d_model]
+    def forward(self, x, src_mask=None):  # [batch_size, seq_len, d_model]
         x = self.conv1(
-            self.attention(x, mask=mask), x
+            self.attention(x, mask=src_mask), x
         )  # [batch_size, seq_len, d_model]
         x = self.conv2(self.ffn(x), x)
         return x
@@ -185,7 +185,9 @@ class Transformer(nn.Module):
         tgt_embedding = self.positional_embedding(
             tgt_embedding
         )  # [batch_size, kv_len, d_model]
-        src = self.encoder(src_embedding, mask=src_mask)
-        tgt = self.decoder(tgt_embedding, memory=src, mask=tgt_mask)
-        out = torch.softmax(self.out_proj(tgt), dim=-1, dtype=torch.float32)
-        return out
+        src = self.encoder(src_embedding, src_mask=src_mask)
+        tgt = self.decoder(
+            tgt_embedding, memory=src, tgt_mask=tgt_mask, src_mask=src_mask
+        )
+        logits = self.out_proj(tgt)
+        return logits
