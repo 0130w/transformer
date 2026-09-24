@@ -44,7 +44,7 @@ class MultiHeadAttention(nn.Module):
         self.q_proj = nn.Linear(d_model, d_model)
         self.k_proj = nn.Linear(d_model, d_model)
         self.v_proj = nn.Linear(d_model, d_model)
-        self.out_proj = nn.Linear(d_model, d_model)  # gather information from each head
+        self.out_proj = nn.Linear(d_model, d_model)  # get information from each head
 
     def forward(self, x):  # [batch_size, seq_len, d_model]
         batch_size, seq_len, _ = x.shape
@@ -70,18 +70,58 @@ class MultiHeadAttention(nn.Module):
         return out
 
 
-class Residual(nn.Module):
-    def __init__(self) -> None:
+class ResidualLayer(nn.Module):
+    def __init__(self, d_model) -> None:
         super().__init__()
+        self.layernorm = nn.LayerNorm(d_model)
+
+    def forward(self, input, x):  # add & norm
+        assert x.shape == input.shape, "residual block shape mismatch"
+        out = x + input  # add
+        out = self.layernorm(out)  # norm
+        return out
+
+
+class FeedForwardLayer(nn.Module):
+    def __init__(self, d_model, head_num, d_ff):
+        super().__init__()
+        self.w_1 = nn.Linear(d_model, d_ff, bias=True, dtype=torch.float32)
+        self.w_2 = nn.Linear(d_ff, d_model, bias=True, dtype=torch.float32)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        out = self.w_1(x)
+        out = self.relu(out)
+        out = self.w_2(out)
+        return out
 
 
 class Encoder(nn.Module):
     def __init__(self, d_model, head_num) -> None:
         super().__init__()
         self.attention = MultiHeadAttention(d_model, head_num)
+        self.conv1 = ResidualLayer(d_model)
+        self.ffn = FeedForwardLayer(d_model, head_num, 4 * d_model)
+        self.conv2 = ResidualLayer(d_model)
 
     def forward(self, x):  # [batch_size, seq_len, d_model]
-        x = self.attention(x)  # [batch_size, seq_len, d_model]
+        out = self.attention(x)  # [batch_size, seq_len, d_model]
+        out = self.conv1(out, x)
+        out = self.ffn(out)
+        out = self.conv2(out, x)
+        return out
+
+
+class Decoder(nn.Module):
+    def __init__(self, d_model, head_num) -> None:
+        super().__init__()
+        self.attention = MultiHeadAttention(d_model, head_num)
+        self.conv1 = ResidualLayer(d_model)
+        self.encode_decode_attention = MultiHeadAttention(d_model, head_num)
+
+    def forward(self, x):
+        out = self.attention(x)  # get information from generated output
+        out = self.conv1(out, x)
 
 
 class Transformer(nn.Module):
@@ -102,5 +142,5 @@ class Transformer(nn.Module):
         self.positional_embedding = PositionalEmbedding(d_model, max_len)
 
     def forward(self, x: torch.Tensor):
-        x = self.embedding(x)  # [batch_size, seq_len, d_model]
-        x = self.positional_embedding(x)  # [batch_size, seq_len, d_model]
+        out = self.embedding(x)  # [batch_size, seq_len, d_model]
+        out = self.positional_embedding(out)  # [batch_size, seq_len, d_model]
