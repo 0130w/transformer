@@ -54,7 +54,7 @@ class MultiHeadAttention(nn.Module):
         if ctx is None:  # encode stage
             ctx = x
         batch_size, q_len, _ = x.shape
-        kv_len = ctx.shape(1)
+        kv_len = ctx.size(1)
         q = self.q_proj(x)
         k = self.k_proj(ctx)
         v = self.v_proj(ctx)
@@ -112,11 +112,9 @@ class Encoder(nn.Module):
         self.conv2 = ResidualLayer(d_model)
 
     def forward(self, x):  # [batch_size, seq_len, d_model]
-        out = self.attention(x)  # [batch_size, seq_len, d_model]
-        out = self.conv1(out, x)
-        out = self.ffn(out)
-        out = self.conv2(out, x)
-        return out
+        x = self.conv1(self.attention(x), x)  # [batch_size, seq_len, d_model]
+        x = self.conv2(self.ffn(x), x)
+        return x
 
 
 class Decoder(nn.Module):
@@ -130,13 +128,10 @@ class Decoder(nn.Module):
         self.conv3 = ResidualLayer(d_model)
 
     def forward(self, x, memory):
-        out = self.attention(x)  # get information from generated output
-        out = self.conv1(out, x)
-        out = self.encode_decode_attention(x, memory)
-        out = self.conv2(out, x)
-        out = self.ffn(out)
-        out = self.conv3(out)
-        return out
+        x = self.conv1(self.attention(x), x)  # get information from generated output
+        x = self.conv2(self.encode_decode_attention(x, memory), x)
+        x = self.conv3(self.ffn(x), x)
+        return x
 
 
 class Transformer(nn.Module):
