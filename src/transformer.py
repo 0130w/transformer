@@ -92,7 +92,7 @@ class ResidualLayer(nn.Module):
 
 
 class FeedForwardLayer(nn.Module):
-    def __init__(self, d_model, head_num, d_ff):
+    def __init__(self, d_model, d_ff):
         super().__init__()
         self.w_1 = nn.Linear(d_model, d_ff, bias=True, dtype=torch.float32)
         self.w_2 = nn.Linear(d_ff, d_model, bias=True, dtype=torch.float32)
@@ -104,13 +104,47 @@ class FeedForwardLayer(nn.Module):
         out = self.w_2(out)
         return out
 
+class ExpertMLP(nn.Module):
+    def __init__(self, d_model, d_ff) -> None:
+        super().__init__()
+        self.w_1 = nn.Linear(d_model, d_ff, bias=True, dtype=torch.float32)
+        self.w_2 = nn.Linear(d_ff, d_model, bias=True, dtype=torch.float32)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        out = self.w_1(x)
+        out = self.relu(out)
+        out = self.w_2(out)
+        return out
+
+class SparseMOE(nn.Module):
+    def __init__(self,
+                 d_model,
+                 d_ff,
+                 num_experts = 4,
+                 top_k = 1) -> None:
+        super().__init__()
+        self.top_k = top_k
+        self.router = nn.Linear(d_model, num_experts, bias=False)   # choose expert
+        self.experts = nn.ModuleList(
+            ExpertMLP(d_model, d_ff)
+            for _ in range(num_experts)
+        )
+
+    def forward(self, x):
+        # [batch_size, seq_len, d_model]
+        # topk_probs / topk_weights [batch_size, seq_len, num_experts]
+        topk_probs, topk_idxs = torch.topk(torch.softmax(self.router(x), -1), -1)
+        topk_weights = topk_probs / topk_probs.sum(-1, keepdim=True)
+        out = torch.zeros_like(x)
+        # TODO:
 
 class Encoder(nn.Module):
     def __init__(self, d_model, head_num) -> None:
         super().__init__()
         self.attention = MultiHeadAttention(d_model, head_num)
         self.conv1 = ResidualLayer(d_model)
-        self.ffn = FeedForwardLayer(d_model, head_num, 4 * d_model)
+        self.ffn = FeedForwardLayer(d_model, 4 * d_model)
         self.conv2 = ResidualLayer(d_model)
 
     def forward(self, x, src_mask=None):  # [batch_size, seq_len, d_model]
